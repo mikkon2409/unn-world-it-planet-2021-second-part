@@ -1,5 +1,0 @@
-torch
-pytesseract
-opencv-python
-pdf2image
-tqdm

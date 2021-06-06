@@ -3,8 +3,8 @@ import pdf2image
 import cv2 as cv
 import numpy as np
 import pytesseract
-from math import floor
 import Levenshtein
+
 
 detection_threshold = 0.8
 dictionary = {'0': '0', '': '0', '9': '9', '5': '5', '1': '1', '3': '3', '7': '7', '8': '8',
@@ -56,10 +56,6 @@ def get_image_from_filepath(filepath: str) -> np.ndarray:
     return image
 
 
-def truncate(f, n):
-    return floor(f * 10 ** n) / 10 ** n
-
-
 def eliminate_escapes(src_str):
     escapes = ''.join([chr(char) for char in range(1, 32)])
     translator = str.maketrans('', '', escapes)
@@ -72,13 +68,6 @@ def translate(src_str):
     output = list(map(lambda x: (x, Levenshtein.distance(src_str, x)), dictionary.keys()))
     output = min(output, key=lambda x: x[1])
     return dictionary[output[0]]
-
-
-digits = '0123456789'
-
-
-def clean_str(src_str):
-    return ''.join(list(filter(lambda x: x in digits, src_str)))
 
 
 def set_point(src_str):
@@ -103,7 +92,6 @@ def recognize(img):
         symbol = pytesseract.image_to_string(img_to_recognize, config=config)
         output.append(symbol)
     output = list(map(lambda x: eliminate_escapes(x), output))
-    print(output)
     output = list(map(lambda x: translate(x), output))
     if output[0] == '6':
         output[0] = '0'
@@ -113,10 +101,7 @@ def recognize(img):
     output = ''.join(output)
     output = set_point(output)
     output = float(output)
-    print(output)
 
-    cv.imshow('img', img)
-    cv.waitKey(0)
     return output
 
 
@@ -152,33 +137,3 @@ def extract_image_features(filepath: str) -> dict:
         'y2': y2,  # int, координата правого нижнего угла зоны показателей прибора
     }
     return result
-
-
-def gt_value_to_list(gt_value):
-    value = str(gt_value)
-    l, r = value.split(sep=".")
-    if len(r) == 3:
-        r = r[:2]
-
-    return l + '.' + r
-
-
-if __name__ == "__main__":
-    import os
-    from tqdm import tqdm
-    import csv
-
-    path_to_png = "TlkWaterMeters/png"
-    with open("TlkWaterMeters/data.tsv") as data:
-        dataset = csv.reader(data, delimiter="\t")
-        dataset = list(dataset)[1:]
-        dataset = dataset[50:100]
-        count = 0
-        for row in tqdm(dataset):
-            path_to_img = os.path.join(path_to_png, row[0].rstrip('.jpg') + '.png')
-            gt_value = float(gt_value_to_list(row[1]))
-            results = extract_image_features(path_to_img)
-            my_value = results['prediction']
-            if my_value == gt_value:
-                count += 1
-        print("Recognized correctly:", count, "Total:", len(dataset))
