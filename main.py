@@ -3,7 +3,7 @@ import pdf2image
 import cv2 as cv
 import numpy as np
 import pytesseract
-import math
+from math import floor
 
 
 detection_threshold = 0.8
@@ -49,15 +49,8 @@ def get_image_from_filepath(filepath: str) -> np.ndarray:
     return image
 
 
-# def img_to_string(src_img):
-#   config = 'tessedit_char_whitelist=0123456789'
-#   text = pytesseract.image_to_string(src_img, lang="eng", config=config)
-#   text = filter(lambda x: x in '0123456789', text)
-#   text = ''.join(list(text))
-#   return text
-
 def truncate(f, n):
-        return math.floor(f * 10 ** n) / 10 ** n
+    return floor(f * 10 ** n) / 10 ** n
 
 
 def eliminate_escapes(src_str):
@@ -72,7 +65,9 @@ def translate(src_str):
     table = str.maketrans(from_char, to_char)
     return src_str.translate(table)
 
+
 digits = '0123456789'
+
 
 def clean_str(src_str):
     return ''.join(list(filter(lambda x: x in digits, src_str)))
@@ -98,6 +93,7 @@ def eliminate_trash(src_str):
     else:
         pass
     return ''
+
 
 def recognize(img):
     config = "--psm 10 -c tessedit_char_whitelist=0123456789"
@@ -149,13 +145,14 @@ def extract_image_features(filepath: str) -> dict:
     prediction = recognize(detected_box_img)
 
     result = {
-    'prediction': prediction, # float, # предсказанный показатель прибора с точностью как минимум до 2х знаков после запятой
+        'prediction': prediction,   # float, предсказанный показатель прибора с
+                                    # точностью как минимум до 2х знаков после запятой
 
-    'x1': x1, # int, # координата верхнего левого угла зоны показателей прибора
-    'y1': y1, # int, # координата верхнего левого угла зоны показателей прибора
+        'x1': x1,  # int, координата верхнего левого угла зоны показателей прибора
+        'y1': y1,  # int, координата верхнего левого угла зоны показателей прибора
 
-    'x2': x2, # int, # координата правого нижнего угла зоны показателей прибора
-    'y2': y2, # int, # координата правого нижнего угла зоны показателей прибора
+        'x2': x2,  # int, координата правого нижнего угла зоны показателей прибора
+        'y2': y2,  # int, координата правого нижнего угла зоны показателей прибора
     }
     return result
 
