@@ -166,8 +166,6 @@ if __name__ == "__main__":
     import csv
     import math
 
-    pytesseract.pytesseract.tesseract_cmd = 'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'
-
     path_to_png = "TlkWaterMeters/png"
     with open("TlkWaterMeters/data.tsv") as data:
         dataset = csv.reader(data, delimiter="\t")
