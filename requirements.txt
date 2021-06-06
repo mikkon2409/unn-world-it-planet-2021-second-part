@@ -1,4 +1,6 @@
 torch
+torchvision
 pytesseract
 opencv-python
 pdf2image
+python-Levenshtein

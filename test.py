@@ -1,19 +1,14 @@
+import Levenshtein
 import torch
 import pdf2image
 import cv2 as cv
 import numpy as np
 import pytesseract
 from math import floor
-import Levenshtein
+from Levenshtein import distance as lv_distance
+
 
 detection_threshold = 0.8
-dictionary = {'0': '0', '': '0', '9': '9', '5': '5', '1': '1', '3': '3', '7': '7', '8': '8',
-              '6': '6', '17': '7', '2': '2', '04': '0', '4': '4', '03': '0', '63': '6', '13': '3',
-              '10': '0', '73': '7', '43': '4', '33': '3', '91': '9', '44': '4', '23': '2',
-              '18': '8', '19': '9', '53': '5', '12': '2', '24': '2', '74': '9', '14': '4',
-              '01': '0', '84': '8', '21': '0', '35': '3', '68': '3', '15': '3', '41': '4',
-              '83': '8', '07': '0', '51': '6', '16': '6', '40': '0', '103': '0', '94': '9'}
-
 model_path = "maskrcnn_resnet50_water_meters.pth"
 
 model = torch.load(model_path)
@@ -29,7 +24,7 @@ def get_bboxes(img_src):
         image = torch.unsqueeze(image, 0)
 
         outputs = model(image)
-        
+
         boxes = outputs[0]['boxes'].data.numpy()
         scores = outputs[0]['scores'].data.numpy()
         boxes = boxes[scores >= detection_threshold].astype(np.int32)
@@ -67,11 +62,10 @@ def eliminate_escapes(src_str):
 
 
 def translate(src_str):
-    if src_str in dictionary:
-        return dictionary[src_str]
-    output = list(map(lambda x: (x, Levenshtein.distance(src_str, x)), dictionary.keys()))
-    output = min(output, key=lambda x: x[1])
-    return dictionary[output[0]]
+    from_char = 'liIgA|)soODp'
+    to_char = '111981150000'
+    table = str.maketrans(from_char, to_char)
+    return src_str.translate(table)
 
 
 digits = '0123456789'
@@ -87,40 +81,82 @@ def set_point(src_str):
     return ''.join(chars)
 
 
-def recognize(img):
+def eliminate_trash(src_str):
+    if len(src_str) == 1:
+        if src_str in digits:
+            return src_str
+        else:
+            res = translate(src_str)
+
+    elif len(src_str) == 2:
+        pass
+    elif len(src_str) == 3:
+        pass
+    else:
+        pass
+    return ''
+
+
+comparison_dict = {}
+
+
+def make_translator():
+    res_dict = {}
+    for i, k in comparison_dict.items():
+        res_dict[i] = str(np.argmax(k))
+    return res_dict
+
+
+def compare2dict(my, gt):
+    for i, j in zip(my, gt):
+        if i not in comparison_dict:
+            comparison_dict[i] = [0 for _ in range(10)]
+        comparison_dict[i][int(j)] += 1
+
+
+def recognize(img, gt_value):
     config = "--psm 10 -c tessedit_char_whitelist=0123456789"
+    # img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
     img = cv.medianBlur(img, 5)
     img = cv.normalize(img, img, 0, 255, cv.NORM_MINMAX)
-    h, w, _ = img.shape
-    if w / h < 3:
-        img = cv.rotate(img, cv.ROTATE_90_CLOCKWISE)
-        h, w, _ = img.shape
-
-    step = w / 8
+    _, w, _ = img.shape
+    step = w // 8
     output = []
     for i in range(7):
-        img_to_recognize = img[:, int(step*i):int(step*(i+1)), :]
+        img_to_recognize = img[:, step * i:step * (i + 1), :]
         symbol = pytesseract.image_to_string(img_to_recognize, config=config)
         output.append(symbol)
     output = list(map(lambda x: eliminate_escapes(x), output))
-    print(output)
-    output = list(map(lambda x: translate(x), output))
-    if output[0] == '6':
-        output[0] = '0'
-    if output[1] == '6':
-        output[0] = '0'
+    compare2dict(output, gt_value)
 
-    output = ''.join(output)
-    output = set_point(output)
-    output = float(output)
-    print(output)
-
-    cv.imshow('img', img)
-    cv.waitKey(0)
+    # output = list(map(lambda x: '0' if x == '' else x, output))
+    # output = list(map(lambda x: eliminate_trash(x), output))
+    #
+    # cv.imshow('img', img)
+    # cv.waitKey(0)
+    #
+    # output = clean_str(output)
+    #
+    # output = set_point(output)
+    # output = float(output)
+    output = 1.0
+    # output = truncate(output, 2)
+    # print(output)
     return output
 
 
-def extract_image_features(filepath: str) -> dict:
+def gt_value_to_list(gt_value):
+    value = str(gt_value)
+    l, r = value.split(sep=".")
+    if len(l) < 5:
+        l = l.zfill(5)
+    if len(r) < 3:
+        r = r + '0' * (3 - len(r))
+
+    return [*l, *r][:7]
+
+
+def extract_image_features(filepath, gt_value):
     """
     Функция, которая будет вызвана для получения признаков документа, для которого
     задан:
@@ -137,13 +173,14 @@ def extract_image_features(filepath: str) -> dict:
     y1 = int(bbox[1])
     x2 = int(bbox[2])
     y2 = int(bbox[3])
-    
+
     detected_box_img = src_img[y1:y2, x1:x2]
-    prediction = recognize(detected_box_img)
+    gt_value_list = gt_value_to_list(gt_value)
+    prediction = recognize(detected_box_img, gt_value_list)
 
     result = {
-        'prediction': prediction,   # float, предсказанный показатель прибора с
-                                    # точностью как минимум до 2х знаков после запятой
+        'prediction': prediction,  # float, предсказанный показатель прибора с
+        # точностью как минимум до 2х знаков после запятой
 
         'x1': x1,  # int, координата верхнего левого угла зоны показателей прибора
         'y1': y1,  # int, координата верхнего левого угла зоны показателей прибора
@@ -154,31 +191,31 @@ def extract_image_features(filepath: str) -> dict:
     return result
 
 
-def gt_value_to_list(gt_value):
-    value = str(gt_value)
-    l, r = value.split(sep=".")
-    if len(r) == 3:
-        r = r[:2]
-
-    return l + '.' + r
-
-
 if __name__ == "__main__":
     import os
     from tqdm import tqdm
     import csv
 
-    path_to_png = "TlkWaterMeters/png"
-    with open("TlkWaterMeters/data.tsv") as data:
-        dataset = csv.reader(data, delimiter="\t")
-        dataset = list(dataset)[1:]
-        dataset = dataset[50:100]
-        count = 0
-        for row in tqdm(dataset):
-            path_to_img = os.path.join(path_to_png, row[0].rstrip('.jpg') + '.png')
-            gt_value = float(gt_value_to_list(row[1]))
-            results = extract_image_features(path_to_img)
-            my_value = results['prediction']
-            if my_value == gt_value:
-                count += 1
-        print("Recognized correctly:", count, "Total:", len(dataset))
+    print(Levenshtein.distance("aaa", "aaa"))
+    print(Levenshtein.distance("aba", "aaa"))
+    print(Levenshtein.distance("aba", "baa"))
+    print(Levenshtein.distance("ab", "ca"))
+
+    # path_to_png = "TlkWaterMeters/png"
+    # with open("TlkWaterMeters/data.tsv") as data:
+    #     dataset = csv.reader(data, delimiter="\t")
+    #     dataset = list(dataset)[1:]
+    #     # dataset = dataset[:20]
+    #     count = 0
+    #     for row in tqdm(dataset):
+    #         path_to_img = os.path.join(path_to_png, row[0].rstrip('.jpg') + '.png')
+    #         gt_value = row[1]
+    #         # print(gt_value)
+    #         # print(gt_value_to_list(gt_value))
+    #         results = extract_image_features(path_to_img, gt_value)
+    #         # my_value = results['prediction']
+    #         # if my_value == gt_value:
+    #         #     count += 1
+    #     print(comparison_dict)
+    #     print(make_translator())
+    #     print("Recognized correctly:", count, "Total:", len(dataset))
