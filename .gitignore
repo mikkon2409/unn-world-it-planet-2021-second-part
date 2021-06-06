@@ -1,3 +1,5 @@
 .vscode
 venv
 TlkWaterMeters
+.idea
+maskrcnn_resnet50_water_meters.pth
